@@ -88,26 +88,31 @@
             let models_origin = null
 			const loader = new PLYLoader();
 			const controls = {}
-			const fileRegex = /(\w+)[_(\d+)]?\.*/;
+            const fileRegex = /(\w+)_(\d+)\.|(\w+)\./;
 
 			function setTargetMesh() {
 				let step = controls.step
 				let key = models[step]
+
                 let geometry = models_geo[key]
                 
                 if (geometry == null) {
                     return
 				}
 
+				let min = models_origin.boundingBox.min
+				let max = models_origin.boundingBox.max
+
+                let scale = Math.max(max.x - min.x, max.y - min.y, max.z - min.z)
+
 				let mesh = scene.getObjectByName('model_2000')
 				if (mesh == null) {
                     // The material for pytorch3d model
                     const material = new THREE.MeshPhongMaterial({ color: 0xAAAAAA, specular: 0x111111, shininess: 200 });
 					const mesh = new THREE.Mesh(geometry, material);
-
-					mesh.position.set(0.5, -0.5, 0);
-					mesh.scale.multiplyScalar(1.5);
-
+					
+                    mesh.position.set(0.5, 0, 0);
+                    mesh.scale.set(1 / scale, 1 / scale, 1 / scale);
 					mesh.castShadow = true;
 					mesh.receiveShadow = true;
 
@@ -116,25 +121,31 @@
 					scene.add(mesh);
 				}
 				else {
-                    mesh.geometry = geometry
+					mesh.geometry = geometry
+                    mesh.scale.set(1 / scale, 1 / scale, 1 / scale);
                 }
 			}
 
             function setOriginMesh() {
-                let geometry = models_origin
+				let geometry = models_origin
 
                 if (geometry == null) {
                     return
-                }
+				}
 
+				let min = geometry.boundingBox.min
+				let max = geometry.boundingBox.max
+
+                let scale = Math.max(max.x - min.x, max.y - min.y, max.z - min.z)
+                console.log(scale)
                 let mesh = scene.getObjectByName('model_origin')
                 if (mesh == null) {
                     // The material for pytorch3d model
                     const material = new THREE.MeshPhongMaterial({ color: 0xFF5555, specular: 0x111111, shininess: 200 });
                     const mesh = new THREE.Mesh(geometry, material);
 
-                    mesh.position.set(-0.5, -0.5, 0);
-                    mesh.scale.multiplyScalar(1.5);
+                    mesh.position.set(-0.5, 0, 0);
+                    mesh.scale.set(1 / scale, 1 / scale, 1 / scale);
 
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
@@ -144,28 +155,44 @@
                     scene.add(mesh);
                 }
                 else {
-                    mesh.geometry = geometry
+					mesh.geometry = geometry
+                    mesh.scale.set(1 / scale, 1 / scale, 1 / scale);
                 }
             }
 
 			function readLocalFile() {
-				let counter = 0
-				for (let i = 0; i < models.length; i++) {
-					let key = models[i]
-					let url = './result/dolphin/model_' + key + '.ply'
-                    loader.load(url, (geometry) => {
-                        geometry.computeVertexNormals()
-						models_geo[key] = geometry
+				
+				let url = './result/dolphin/model' + '.ply'
 
-						counter++
+                loader.load(url, (geometry) => {
+                    geometry.computeVertexNormals()
+					geometry.computeBoundingBox()
+					geometry.center()
+                    models_origin = geometry
+					setOriginMesh()
 
-						if (counter == models.length) {
-							setOriginMesh()
-                            setTargetMesh()
-                        }
-							
-                    })
-                }
+                    let counter = 0
+                    for (let i = 0; i < models.length; i++) {
+                        let key = models[i]
+
+                        url = './result/dolphin/model_' + key + '.ply'
+
+                        loader.load(url, (geometry) => {
+							geometry.computeVertexNormals()
+                            geometry.center()
+                            models_geo[key] = geometry
+
+                            counter++
+
+                            if (counter == models.length) {
+                                setTargetMesh()
+                            }
+
+                        })
+                    }
+				})
+
+				
             }
 
 			function initControls() {
@@ -176,7 +203,8 @@
                 uploadBtn.mozdirectory = true
                 uploadBtn.accept = '.ply'
                 uploadBtn.addEventListener('change', (evt) => {
-                    let files = evt.target.files
+					let files = evt.target.files
+					let counter = 0
 
                     if (files.length <= 0) {
                         return
@@ -190,30 +218,29 @@
 						let file = files[i]
 						let reader = new FileReader()
 						let content = file.name.match(fileRegex)
-						let name = ''
-						console.log(content)
+
                         reader.onload = () => {
 							let url = reader.result
-
-							if (name == '' || name == null) {
-								name = content[1]
-							}
-							else if (name != content[1]) {
-								return
-                            }
-
 							let key = content[2]
 
                             loader.load(url, (geometry) => {
 								geometry.computeVertexNormals()
+                                geometry.computeBoundingBox()
+								geometry.center()
 
-                                if (key == null) {
-                                    models_origin = geometry
+								if (key == null) {
+									models_origin = geometry
                                 }
                                 else {
                                     models_geo[key] = geometry
                                 }
-                                
+
+								counter++
+
+								if (counter == files.length) {
+									setOriginMesh()
+									setTargetMesh()
+                                }
                             })
                         }
                         reader.readAsDataURL(file)
@@ -263,21 +290,6 @@
 
 
 				// Load original model according to model_id
-				loader.load( './models/dolphin.ply', function ( geometry ) {
-
-					const material = new THREE.MeshPhongMaterial( { color: 0xFF5555, specular: 0x111111, shininess: 200 } );
-					geometry.computeVertexNormals();
-
-					const mesh = new THREE.Mesh( geometry, material );
-
-					mesh.position.set( -0.5, -0.5, 0 );
-					mesh.scale.multiplyScalar( 1.5 );
-
-					mesh.castShadow = true;
-					mesh.receiveShadow = true;
-
-					scene.add( mesh );
-				} );
 
 				// Lights
 
